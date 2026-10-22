@@ -35,7 +35,7 @@ export function SafeHtmlPreview({
         title={title || "AI-generated redesign preview"}
         srcDoc={srcDoc}
         sandbox=""
-        className="h-full w-full"
+        className="h-full w-full pointer-events-none"
         loading="lazy"
         referrerPolicy="no-referrer"
       />

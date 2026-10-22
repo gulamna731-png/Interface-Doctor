@@ -2,8 +2,8 @@
 
 import type { ScreenshotSelection } from "@/lib/types";
 
-const MAX_ANALYSIS_DIMENSION = 1280;
-const JPEG_QUALITY = 0.88;
+const DEFAULT_MAX_ANALYSIS_DIMENSION = 1024;
+const JPEG_QUALITY = 0.82;
 
 /**
  * Downscale a data-URL image so it is small enough for reliable network upload
@@ -13,7 +13,7 @@ const JPEG_QUALITY = 0.88;
 export async function downscaleDataUrl(
   dataUrl: string,
   mimeType: string,
-  maxDimension = MAX_ANALYSIS_DIMENSION,
+  maxDimension = DEFAULT_MAX_ANALYSIS_DIMENSION,
 ): Promise<string> {
   const img = await new Promise<HTMLImageElement>((resolve, reject) => {
     const el = new Image();
@@ -41,7 +41,10 @@ export async function downscaleDataUrl(
 }
 
 /** Read an image file into a ScreenshotSelection with a preview + data URL. */
-export async function fileToSelection(file: File): Promise<ScreenshotSelection> {
+export async function fileToSelection(
+  file: File,
+  maxDimension = DEFAULT_MAX_ANALYSIS_DIMENSION,
+): Promise<ScreenshotSelection> {
   const readerResult = await new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = () => reject(new Error("Could not read the selected file."));
@@ -58,7 +61,7 @@ export async function fileToSelection(file: File): Promise<ScreenshotSelection> 
   });
 
   const mimeType = file.type || "image/png";
-  const dataUrl = await downscaleDataUrl(readerResult, mimeType);
+  const dataUrl = await downscaleDataUrl(readerResult, mimeType, maxDimension);
 
   return {
     previewUrl: dataUrl,
@@ -77,7 +80,9 @@ export async function fileToSelection(file: File): Promise<ScreenshotSelection> 
  * it passes through the exact same pipeline (and server validation) as an
  * uploaded file.
  */
-export async function loadSampleSelection(): Promise<ScreenshotSelection> {
+export async function loadSampleSelection(
+  maxDimension = DEFAULT_MAX_ANALYSIS_DIMENSION,
+): Promise<ScreenshotSelection> {
   const res = await fetch("/sample-screenshot.svg");
   if (!res.ok) throw new Error("The sample screenshot could not be loaded.");
   const svgText = await res.text();
@@ -104,7 +109,7 @@ export async function loadSampleSelection(): Promise<ScreenshotSelection> {
   if (!blob) throw new Error("The sample screenshot could not be converted to PNG.");
 
   const fullDataUrl = canvas.toDataURL("image/png");
-  const dataUrl = await downscaleDataUrl(fullDataUrl, "image/png");
+  const dataUrl = await downscaleDataUrl(fullDataUrl, "image/png", maxDimension);
   return {
     previewUrl: dataUrl,
     dataUrl,

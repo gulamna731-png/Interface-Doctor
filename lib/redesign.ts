@@ -11,6 +11,7 @@
 import { getAiConfig, getAiRuntimeStatus } from "@/lib/ai";
 import { callOllamaChat, getOllamaBaseUrl } from "@/lib/ollama";
 import { extractJsonContent } from "@/lib/jsonExtraction";
+import { generateDemoRedesign, measureImage } from "@/lib/demoProvider";
 import type { AnalysisFinding, RedesignPayload } from "@/lib/types";
 
 export interface RedesignOptions {
@@ -67,6 +68,15 @@ export async function runRedesignGeneration(
     throw new Error("OPENAI_API_KEY is required when using OpenAI.");
   }
 
+  if (config.provider === "demo") {
+    const metrics = await measureImage(options.imageDataUrl);
+    return generateDemoRedesign(
+      metrics,
+      options.originalWidth,
+      options.originalHeight,
+    );
+  }
+
   const imageMatch = options.imageDataUrl.match(
     /^data:image\/[^;]+;base64,(.+)$/s,
   );
@@ -84,7 +94,7 @@ export async function runRedesignGeneration(
         systemPrompt: REDESIGN_SYSTEM_PROMPT,
         userPrompt: buildUserPrompt(options),
         imageBase64: imageMatch[1],
-        numPredict: 2_500,
+        numPredict: 1_600,
         jsonMode: true,
       });
     } catch (err) {
@@ -92,34 +102,44 @@ export async function runRedesignGeneration(
       throw new Error(message);
     }
   } else if (config.provider === "openai") {
-    const response = await fetch(
-      "https://api.openai.com/v1/chat/completions",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${config.apiKey}`,
+    let response: Response;
+    try {
+      response = await fetch(
+        "https://api.openai.com/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${config.apiKey}`,
+          },
+          signal: AbortSignal.timeout(120_000),
+          body: JSON.stringify({
+            model: config.model,
+            max_tokens: 1600,
+            response_format: { type: "json_object" },
+            messages: [
+              { role: "system", content: REDESIGN_SYSTEM_PROMPT },
+              {
+                role: "user",
+                content: [
+                  { type: "text", text: buildUserPrompt(options) },
+                  {
+                    type: "image_url",
+                    image_url: { url: options.imageDataUrl },
+                  },
+                ],
+              },
+            ],
+          }),
         },
-        body: JSON.stringify({
-          model: config.model,
-          max_tokens: 2000,
-          response_format: { type: "json_object" },
-          messages: [
-            { role: "system", content: REDESIGN_SYSTEM_PROMPT },
-            {
-              role: "user",
-              content: [
-                { type: "text", text: buildUserPrompt(options) },
-                {
-                  type: "image_url",
-                  image_url: { url: options.imageDataUrl },
-                },
-              ],
-            },
-          ],
-        }),
-      },
-    );
+      );
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : "";
+      const message = detail.toLowerCase().includes("timeout")
+        ? "The OpenAI redesign request timed out. Try again with a smaller screenshot or check the connection."
+        : "Could not reach OpenAI. Check the network connection and try again.";
+      throw new Error(message);
+    }
 
     if (!response.ok) {
       let detail = "";
@@ -234,17 +254,28 @@ function sanitizeHtml(html: string): string {
         /<form\b[^<]*(?:(?!<\/form>)<[^<]*)*<\/form>/gi,
         "",
       )
+      // Remove embedded <style> blocks; CSS belongs in the css field only.
+      .replace(
+        /<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi,
+        "",
+      )
+      // Remove document-level tags so the fragment can be safely embedded.
+      .replace(/<!doctype\b[^>]*>/gi, "")
+      .replace(/<!DOCTYPE\b[^>]*>/gi, "")
+      .replace(/<\/?html\b[^>]*>/gi, "")
+      .replace(/<\/?head\b[^>]*>/gi, "")
+      .replace(/<\/?body\b[^>]*>/gi, "")
       .trim()
   );
 }
 
 function sanitizeCss(css: string): string {
   // Remove @import and expression() to block external resources and IE expressions,
-  // and break out of any embedded </style> tags.
+  // and break out of any embedded <style> tags that could terminate the CSP block.
   return css
     .replace(/@import\s+[^;]+;/gi, "")
     .replace(/expression\s*\(/gi, "")
-    .replace(/<\/style\b/gi, "")
+    .replace(/<\/?style\b/gi, "")
     .trim();
 }
 

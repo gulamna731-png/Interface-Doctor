@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { getAiRuntimeStatus } from "@/lib/ai";
 import { runRedesignGeneration } from "@/lib/redesign";
@@ -92,11 +93,45 @@ export async function POST(req: NextRequest): Promise<NextResponse<RedesignResul
   }
 }
 
+const VALID_SEVERITIES = ["critical", "high", "medium", "low"] as const;
+const VALID_CATEGORIES = [
+  "visual-hierarchy",
+  "spacing-alignment",
+  "typography-readability",
+  "color-contrast",
+  "accessibility",
+  "component-consistency",
+  "navigation-usability",
+  "responsive-design",
+  "other",
+] as const;
+
 function parseFindings(value: unknown): AnalysisFinding[] | undefined {
   if (!Array.isArray(value)) return undefined;
-  return value.filter((item): item is AnalysisFinding => {
-    if (typeof item !== "object" || item === null) return false;
-    const f = item as Record<string, unknown>;
-    return typeof f.id === "string" && typeof f.title === "string";
-  });
+  return value
+    .filter((item) => typeof item === "object" && item !== null)
+    .map((item) => item as Record<string, unknown>)
+    .filter((f) => typeof f.title === "string")
+    .map((f) => ({
+      id: typeof f.id === "string" ? f.id : randomUUID(),
+      title: f.title as string,
+      severity: VALID_SEVERITIES.includes(f.severity as (typeof VALID_SEVERITIES)[number])
+        ? (f.severity as (typeof VALID_SEVERITIES)[number])
+        : "medium",
+      category: VALID_CATEGORIES.includes(f.category as (typeof VALID_CATEGORIES)[number])
+        ? (f.category as (typeof VALID_CATEGORIES)[number])
+        : "other",
+      explanation: typeof f.explanation === "string" ? f.explanation : "",
+      suggestion: typeof f.suggestion === "string" ? f.suggestion : "",
+      confidence: typeof f.confidence === "number" ? f.confidence : undefined,
+      region:
+        typeof f.region === "object" && f.region !== null
+          ? {
+              x: Number((f.region as Record<string, unknown>).x),
+              y: Number((f.region as Record<string, unknown>).y),
+              width: Number((f.region as Record<string, unknown>).width),
+              height: Number((f.region as Record<string, unknown>).height),
+            }
+          : undefined,
+    })) as AnalysisFinding[];
 }

@@ -75,24 +75,26 @@ export function Dashboard() {
     [registerProject],
   );
 
+  const analysisMaxDimension = aiStatus?.provider === "openai" ? 1280 : 1024;
+
   const handleFile = useCallback(
     (file: File) => {
       setUploadError(null);
-      fileToSelection(file)
+      fileToSelection(file, analysisMaxDimension)
         .then(acceptSelection)
         .catch((err: Error) => setUploadError(err.message));
     },
-    [acceptSelection],
+    [acceptSelection, analysisMaxDimension],
   );
 
   const handleSample = useCallback(() => {
     setSampleLoading(true);
     setUploadError(null);
-    loadSampleSelection()
+    loadSampleSelection(analysisMaxDimension)
       .then(acceptSelection)
       .catch((err: Error) => setUploadError(err.message))
       .finally(() => setSampleLoading(false));
-  }, [acceptSelection]);
+  }, [acceptSelection, analysisMaxDimension]);
 
   const handleAnalyze = useCallback(async () => {
     if (!selection || analyzing) return;

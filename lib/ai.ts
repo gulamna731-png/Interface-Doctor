@@ -9,6 +9,7 @@
 import { randomUUID } from "node:crypto";
 import { callOllamaChat, getOllamaBaseUrl } from "@/lib/ollama";
 import { extractJsonContent } from "@/lib/jsonExtraction";
+import { generateDemoFindings, measureImage } from "@/lib/demoProvider";
 import {
   CATEGORY_LABELS,
   FINDING_CATEGORIES,
@@ -26,11 +27,14 @@ export interface AiConfig {
 }
 
 export function getAiRuntimeStatus(): AiStatusResponse {
-  const provider = (process.env.AI_PROVIDER || "ollama").trim().toLowerCase();
-  const model = (process.env.AI_VISION_MODEL || "gemma3").trim();
+  const provider = (process.env.AI_PROVIDER || "demo").trim().toLowerCase();
+  const defaultModel =
+    provider === "openai" ? "gpt-4o-mini" : provider === "demo" ? "heuristic" : "gemma3";
+  const model = (process.env.AI_VISION_MODEL || defaultModel).trim();
   const apiKey = process.env.OPENAI_API_KEY?.trim();
 
-  const supportedProvider = provider === "ollama" || provider === "openai";
+  const supportedProvider =
+    provider === "ollama" || provider === "openai" || provider === "demo";
 
   const variablesChecked = [
     "AI_PROVIDER",
@@ -41,7 +45,7 @@ export function getAiRuntimeStatus(): AiStatusResponse {
 
   // Ensure Ollama does not require OPENAI_API_KEY to be considered configured.
   if (provider === "ollama") {
-    // no-op: Ollama does not require API keys; keep keyPresent true to reflect readiness.
+    // no-op: Ollama does not require API keys; readiness is determined by configured/status.
   }
 
   if (!supportedProvider) {
@@ -55,7 +59,21 @@ export function getAiRuntimeStatus(): AiStatusResponse {
       missing: ["AI_PROVIDER"],
       message:
         `Provider '${provider}' is not supported. ` +
-        "Set AI_PROVIDER=ollama or AI_PROVIDER=openai.",
+        "Set AI_PROVIDER=ollama, AI_PROVIDER=openai, or AI_PROVIDER=demo.",
+      diagnostics: { runtime: "nodejs", variablesChecked },
+    };
+  }
+
+  if (provider === "demo") {
+    return {
+      configured: true,
+      provider,
+      model,
+      keyPresent: false,
+      supportedProvider: true,
+      status: "ready",
+      missing: [],
+      message: "Demo heuristic provider configured. No external AI key is required.",
       diagnostics: { runtime: "nodejs", variablesChecked },
     };
   }
@@ -171,7 +189,7 @@ export async function runVisionDiagnosis(
         systemPrompt: SYSTEM_PROMPT,
         userPrompt: "Diagnose the interface problems in this screenshot.",
         imageBase64: imageMatch[1],
-        numPredict: 1_500,
+        numPredict: 1_200,
         jsonMode: true,
       });
     } catch (err) {
@@ -191,9 +209,10 @@ export async function runVisionDiagnosis(
           "Content-Type": "application/json",
           Authorization: `Bearer ${config.apiKey}`,
         },
+        signal: AbortSignal.timeout(60_000),
         body: JSON.stringify({
           model: config.model,
-          max_tokens: 1500,
+          max_tokens: 1200,
           response_format: { type: "json_object" },
           messages: [
             { role: "system", content: SYSTEM_PROMPT },
@@ -210,11 +229,12 @@ export async function runVisionDiagnosis(
           ],
         }),
       });
-    } catch {
-      throw new AiRequestError(
-        "Could not reach OpenAI. Check the network connection and try again.",
-        "network",
-      );
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : "";
+      const message = detail.toLowerCase().includes("timeout")
+        ? "The OpenAI request timed out. Try again with a smaller screenshot or check the connection."
+        : "Could not reach OpenAI. Check the network connection and try again.";
+      throw new AiRequestError(message, "network");
     }
 
     if (response.status === 429) {
@@ -261,6 +281,9 @@ export async function runVisionDiagnosis(
       );
     }
     rawContent = extractJsonContent(content);
+  } else if (config.provider === "demo") {
+    const metrics = await measureImage(imageDataUrl);
+    return generateDemoFindings(metrics);
   } else {
     throw new AiRequestError(
       `Unsupported AI provider: ${config.provider}.`,

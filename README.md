@@ -8,7 +8,7 @@ automated accessibility/responsive verification with measurable before-and-after
 This repository now contains the complete **Phase 1–7** workflow:
 
 1. **Upload** a PNG/JPG screenshot (or use the bundled sample).
-2. **Diagnose** the interface with a vision AI model.
+2. **Diagnose** the interface with a vision AI model or the built-in heuristic demo provider.
 3. **Review** prioritized findings, category filters, and clickable screenshot markers.
 4. **Generate** a sanitized, responsive HTML/CSS redesign.
 5. **Preview** the redesign safely inside a sandboxed iframe.
@@ -49,9 +49,9 @@ The provider is configurable via environment variables (see `.env.example`):
 
 | Variable | Purpose |
 |----------|---------|
-| `AI_PROVIDER` | AI engine to use. Default `ollama`; set to `openai` to use OpenAI. |
+| `AI_PROVIDER` | AI engine to use. Default `demo` (self-contained heuristic provider, no key required); set to `ollama` or `openai` for real AI providers. |
 | `OLLAMA_BASE_URL` | Local Ollama endpoint. Default `http://localhost:11434`. In GitHub Codespaces this refers to the Codespace/container environment, not your personal computer. |
-| `AI_VISION_MODEL` | Model used for analysis and redesign. Default `gemma3` for Ollama; for OpenAI use a vision-capable model such as `gpt-4o` or `gpt-4-turbo`. |
+| `AI_VISION_MODEL` | Model used for analysis and redesign. Defaults to `gemma3` for Ollama and `gpt-4o-mini` for OpenAI. |
 | `OPENAI_API_KEY` | Required only when `AI_PROVIDER=openai`. |
 
 ### How environment variables reach the app
@@ -79,7 +79,7 @@ separately:
      - `AI_VISION_MODEL=gemma3`
    - For OpenAI:
      - `AI_PROVIDER=openai`
-     - `AI_VISION_MODEL=gpt-4o`
+     - `AI_VISION_MODEL=gpt-4o-mini`
      - `OPENAI_API_KEY=sk-...`
 4. Rebuild the container or restart the dev server so the new secrets are loaded.
 
@@ -87,7 +87,7 @@ The application reads `OPENAI_API_KEY` only through `process.env.OPENAI_API_KEY`
 
 ### Status badge meanings
 
-- **AI engine ready** — the provider is supported and (for Ollama) the service is reachable and the model is installed.
+- **AI engine ready** — the provider is supported and (for Ollama) the service is reachable and the model is installed. For `demo`, this means the heuristic provider is active and no external key is required.
 - **Ollama unreachable** — `AI_PROVIDER=ollama` is set, but the server cannot reach Ollama at `OLLAMA_BASE_URL`.
 - **Model missing** — Ollama is reachable, but the configured `AI_VISION_MODEL` is not installed.
 - **Key not found in server environment** — `AI_PROVIDER=openai` but `OPENAI_API_KEY` is missing or empty in the server environment.
@@ -143,7 +143,7 @@ If analysis or redesign fails with a key error:
 1. Confirm `AI_PROVIDER=openai` is set.
 2. Confirm `OPENAI_API_KEY` is set as a server-side secret (not in the browser, not in `.env.example`).
 3. Confirm the dev server was restarted after the secret was added.
-4. Check that `AI_VISION_MODEL` is a vision-capable model (e.g. `gpt-4o`).
+4. Check that `AI_VISION_MODEL` is a vision-capable model (e.g. `gpt-4o-mini` or `gpt-4o`).
 5. Inspect `/api/status` for the `keyPresent` flag.
 
 **If no AI service is reachable**, the upload/preview workflow still works end-to-end and the UI
@@ -153,7 +153,7 @@ error messages.
 
 ## Responsive redesign and before/after comparison
 
-After diagnosis, click **Generate Redesign** to ask the AI for an improved, responsive webpage
+After diagnosis, click **Generate Redesign** to ask the configured provider for an improved, responsive webpage
 preview based on the screenshot and the diagnosed issues.
 
 - The request goes to `/api/redesign`, which validates the screenshot and forwards it to the
@@ -204,28 +204,30 @@ There is no database yet. "Recent projects" are stored in the browser's `localSt
 (downscaled thumbnails only) and reset if storage is cleared. A later phase will move this to a
 real database (it can be enabled from the workspace Database button).
 
-## Completion checkpoints and safe fallback behavior
+## Completion checkpoints
 
-The implementation is considered complete when:
+The implementation is considered complete when all of the following are verified:
 
-- Screenshot upload, sample loading, validation, and preview work.
-- AI diagnosis runs through `/api/analyze` and returns real findings or an honest unconfigured/error message.
-- Findings are filterable, clickable, and highlighted on the screenshot.
-- Redesign generation runs through `/api/redesign` and returns sanitized HTML/CSS or an honest error.
-- The redesign renders in a sandboxed iframe with no script execution and no external requests.
-- The before-and-after slider works with mouse, touch, and keyboard.
-- Verification runs automatically on generated redesigns and distinguishes automated from manual checks.
-- Metrics compare the original diagnosis with the redesign verification using real counts.
-- Missing keys, rate limits, quota errors, and model errors are handled with clear messages.
-- Existing recent-projects and dashboard functionality remain intact.
+1. **Upload and preview** — PNG/JPG screenshots can be uploaded or the bundled sample can be loaded, validated, and previewed.
+2. **AI diagnosis** — `/api/analyze` returns real findings from the configured provider, or an honest `ai_unconfigured` / error message when the provider is missing or unreachable.
+3. **Findings UX** — Findings are filterable by category, clickable, and highlighted with numbered markers on the screenshot.
+4. **Redesign generation** — `/api/redesign` produces sanitized HTML/CSS based on the screenshot and diagnosis, or returns a clear error.
+5. **Secure preview** — The redesign renders inside an iframe with `sandbox=""` and a strict CSP, so no scripts execute and no unauthorized network requests can be made.
+6. **Before-and-after comparison** — The interactive slider works with mouse, touch, and keyboard (arrow keys, Home, End).
+7. **Accessibility and responsive validation** — Verification runs automatically on generated redesigns and labels every finding as **Automated** or **Manual review**.
+8. **Measurable results** — Metrics compare real counts from the original diagnosis with the redesign verification; no scores are fabricated.
+9. **Error handling** — Missing keys, rate limits, quota errors, authentication failures, and model errors are surfaced with plain-language messages.
+10. **Existing functionality** — Recent projects, dashboard navigation, sidebar, and saved-project behavior remain intact.
 
-Safe fallbacks:
+## Safe fallback behavior
 
-- If AI is not configured, the UI shows a clear unconfigured message instead of fake results.
-- If redesign generation fails, the error is shown with a **Try again** button.
-- If verification cannot run, the verification tab shows the error and the metrics tab explains that no redesign is available.
-- If no redesign is present, the verification and metrics tabs show empty-state guidance.
-- If a screenshot is invalid or too large, the upload is rejected with a clear message.
+- **AI not configured:** The UI shows a clear unconfigured message instead of fake findings or redesigns. The upload/preview workflow still works.
+- **Diagnosis or redesign API failure:** The error is displayed with a **Try again** button; no mock data is returned.
+- **Verification cannot run:** The Verification tab shows the error, and the Metrics tab explains that no redesign is available.
+- **No redesign generated:** The Verification and Metrics tabs show empty-state guidance.
+- **Invalid or oversized upload:** The upload is rejected immediately with a clear message (PNG/JPG only, ≤10 MB).
+- **Ollama unreachable or model missing:** `/api/status` reports the exact issue so the badge and messages tell the user what to fix.
+- **OpenAI key missing:** `/api/status` reports `key_missing` only when `AI_PROVIDER=openai`; the key is never exposed to the browser, logs, or source control.
 
 ## Structure
 
