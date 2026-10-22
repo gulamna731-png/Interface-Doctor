@@ -16,12 +16,16 @@ import {
   removeRecentProject,
   type RecentProject,
 } from "@/lib/recentProjects";
+import { computeAfterMetrics, computeBeforeMetrics, compareMetrics } from "@/lib/metrics";
+import { runVerification } from "@/lib/verification";
 import type {
   AiStatusResponse,
   AnalysisFinding,
   AnalyzeResult,
+  ComparisonResult,
   RedesignResult,
   ScreenshotSelection,
+  VerificationReport,
 } from "@/lib/types";
 
 export function Dashboard() {
@@ -35,6 +39,8 @@ export function Dashboard() {
   const [projects, setProjects] = useState<RecentProject[]>([]);
   const [redesignResult, setRedesignResult] = useState<RedesignResult | null>(null);
   const [generatingRedesign, setGeneratingRedesign] = useState(false);
+  const [verification, setVerification] = useState<VerificationReport | null>(null);
+  const [metrics, setMetrics] = useState<ComparisonResult | null>(null);
 
   useEffect(() => {
     setProjects(loadRecentProjects());
@@ -92,6 +98,9 @@ export function Dashboard() {
     if (!selection || analyzing) return;
     setAnalyzing(true);
     setResult(null);
+    setRedesignResult(null);
+    setVerification(null);
+    setMetrics(null);
     try {
       const res = await fetch("/api/analyze", {
         method: "POST",
@@ -148,8 +157,26 @@ export function Dashboard() {
     }
   }, [selection, generatingRedesign, result]);
 
+  useEffect(() => {
+    if (redesignResult?.status === "ok" && result?.status === "ok") {
+      const report = runVerification(redesignResult.redesign);
+      setVerification(report);
+      setMetrics(
+        compareMetrics(
+          computeBeforeMetrics(result.findings),
+          computeAfterMetrics(report, redesignResult.redesign),
+        ),
+      );
+    } else {
+      setVerification(null);
+      setMetrics(null);
+    }
+  }, [redesignResult, result]);
+
   const handleResetRedesign = useCallback(() => {
     setRedesignResult(null);
+    setVerification(null);
+    setMetrics(null);
   }, []);
 
   const clearSelection = useCallback(() => {
@@ -157,6 +184,8 @@ export function Dashboard() {
     setResult(null);
     setActiveFindingId(null);
     setRedesignResult(null);
+    setVerification(null);
+    setMetrics(null);
     setUploadError(null);
   }, []);
 
@@ -248,6 +277,8 @@ export function Dashboard() {
                 selection={selection}
                 redesignResult={redesignResult}
                 generating={generatingRedesign}
+                verification={verification}
+                metrics={metrics}
                 onGenerate={() => void handleGenerateRedesign()}
                 onReset={handleResetRedesign}
               />

@@ -47,8 +47,8 @@ function buildSrcDoc({ html, css }: RedesignPayload): string {
   const csp = [
     "default-src 'none'",
     "style-src 'unsafe-inline'",
-    "img-src data: https:",
-    "font-src https:",
+    "img-src data: blob:",
+    "font-src 'none'",
     "media-src 'none'",
     "object-src 'none'",
     "base-uri 'none'",

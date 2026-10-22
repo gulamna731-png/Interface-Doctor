@@ -5,22 +5,33 @@
 import { useCallback, useState } from "react";
 import { SafeHtmlPreview } from "@/components/SafeHtmlPreview";
 import { BeforeAfterComparison } from "@/components/BeforeAfterComparison";
-import type { RedesignResult, ScreenshotSelection } from "@/lib/types";
+import { VerificationPanel } from "@/components/VerificationPanel";
+import { MetricsPanel } from "@/components/MetricsPanel";
+import type {
+  ComparisonResult,
+  RedesignResult,
+  ScreenshotSelection,
+  VerificationReport,
+} from "@/lib/types";
 
 interface RedesignPanelProps {
   selection: ScreenshotSelection;
   redesignResult: RedesignResult | null;
   generating: boolean;
+  verification: VerificationReport | null;
+  metrics: ComparisonResult | null;
   onGenerate: () => void;
   onReset: () => void;
 }
 
-type RedesignTab = "comparison" | "redesign";
+type RedesignTab = "comparison" | "redesign" | "verification" | "metrics";
 
 export function RedesignPanel({
   selection,
   redesignResult,
   generating,
+  verification,
+  metrics,
   onGenerate,
   onReset,
 }: RedesignPanelProps) {
@@ -192,19 +203,39 @@ export function RedesignPanel({
           active={tab === "redesign"}
           onClick={() => setTab("redesign")}
         />
+        <TabButton
+          label="Verification"
+          active={tab === "verification"}
+          onClick={() => setTab("verification")}
+        />
+        <TabButton
+          label="Metrics"
+          active={tab === "metrics"}
+          onClick={() => setTab("metrics")}
+        />
       </div>
 
       <div className="mt-4">
-        {tab === "comparison" ? (
+        {tab === "comparison" && (
           <BeforeAfterComparison
             before={originalImage}
             after={redesignPreviewFill}
             aspectRatio={aspectRatio}
             label="Drag to compare original screenshot and AI redesign"
           />
-        ) : (
-          redesignPreview
         )}
+        {tab === "redesign" && redesignPreview}
+        {tab === "verification" &&
+          (verification ? (
+            <VerificationPanel report={verification} />
+          ) : (
+            <div className="rounded-xl border border-ink-200 bg-ink-50 p-5">
+              <p className="text-sm text-ink-600">
+                Verification results will appear here once a redesign has been generated.
+              </p>
+            </div>
+          ))}
+        {tab === "metrics" && <MetricsPanel metrics={metrics} />}
       </div>
 
       {redesign.improvements.length > 0 && (

@@ -72,7 +72,7 @@ export function Sidebar({ aiStatus }: { aiStatus: AiStatusResponse | null }) {
         <p className="text-[11px] leading-relaxed text-ink-500">
           Interface Doctor AI · Team DebugMD
           <br />
-          Hackathon build · Phase 4
+          Hackathon build · Phases 1–7
         </p>
       </div>
     </aside>

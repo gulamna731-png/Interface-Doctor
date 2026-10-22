@@ -89,6 +89,64 @@ export type RedesignResult =
   | { status: "ai_unconfigured"; message: string; missing: string[] }
   | { status: "error"; message: string };
 
+/** A verification finding produced by automated heuristics or manual-review guidance. */
+export interface VerificationFinding {
+  id: string;
+  severity: Severity;
+  category: FindingCategory;
+  title: string;
+  explanation: string;
+  recommendation: string;
+  /** True when the check can be performed automatically by the app. */
+  automated: boolean;
+}
+
+export interface VerificationSummary {
+  total: number;
+  bySeverity: Record<Severity, number>;
+  automated: number;
+  manual: number;
+  /** Heuristic 0-100 estimate; null when it cannot be computed. */
+  responsiveScore: number | null;
+  contrastIssues: number;
+  typographyIssues: number;
+  accessibilityIssues: number;
+  overflowRisks: number;
+}
+
+export type VerificationReport =
+  | { status: "ok"; findings: VerificationFinding[]; summary: VerificationSummary }
+  | { status: "empty"; findings: []; summary: VerificationSummary }
+  | { status: "error"; message: string; findings: []; summary: VerificationSummary };
+
+export interface BeforeMetrics {
+  totalFindings: number;
+  bySeverity: Record<Severity, number>;
+  byCategory: Record<FindingCategory, number>;
+  topCategory: string | null;
+}
+
+export interface AfterMetrics {
+  totalIssues: number;
+  bySeverity: Record<Severity, number>;
+  contrastIssues: number;
+  typographyIssues: number;
+  accessibilityIssues: number;
+  responsiveScore: number | null;
+  overflowRisks: number;
+  improvementsCount: number;
+  remainingByCategory: Record<FindingCategory, number>;
+}
+
+export interface ComparisonResult {
+  before: BeforeMetrics;
+  after: AfterMetrics;
+  improvementsCount: number;
+  remainingIssues: number;
+  /** Honest, plain-language summary of what the numbers do and do not mean. */
+  summary: string;
+}
+
 export type AiSupportStatus =
   | "ready"
   | "key_missing"

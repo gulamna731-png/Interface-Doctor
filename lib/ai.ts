@@ -234,6 +234,14 @@ export async function runVisionDiagnosis(
       } catch {
         // The provider did not return a readable error body.
       }
+
+      if (response.status === 401 || response.status === 403) {
+        throw new AiRequestError(
+          "Authentication failed. Check that OPENAI_API_KEY is set correctly and is valid.",
+          "provider_error",
+        );
+      }
+
       throw new AiRequestError(
         `${config.provider} returned HTTP ${response.status}.${
           detail ? ` ${detail}` : ""

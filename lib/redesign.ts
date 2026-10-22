@@ -122,8 +122,34 @@ export async function runRedesignGeneration(
     );
 
     if (!response.ok) {
-      const body = await response.text().catch(() => "");
-      throw new Error(`AI provider returned HTTP ${response.status}. ${body}`);
+      let detail = "";
+      try {
+        const errorPayload = (await response.json()) as {
+          error?: { message?: string };
+        };
+        detail = errorPayload.error?.message || "";
+      } catch {
+        // Provider did not return a readable error body.
+      }
+
+      if (response.status === 429) {
+        throw new Error(
+          "The AI provider rate limit was reached. Wait a moment and try again.",
+        );
+      }
+      if (response.status === 401 || response.status === 403) {
+        throw new Error(
+          "Authentication failed. Check that OPENAI_API_KEY is set correctly and is valid.",
+        );
+      }
+      if (response.status === 400) {
+        throw new Error(
+          `The AI provider rejected the request (model or format error). ${detail}`.trim(),
+        );
+      }
+      throw new Error(
+        `AI provider returned HTTP ${response.status}. ${detail}`.trim(),
+      );
     }
 
     const payload = (await response.json()) as {
@@ -194,9 +220,18 @@ function sanitizeHtml(html: string): string {
       )
       // Remove meta refresh / CSP meta tags for safety.
       .replace(/<meta\b[^>]*>/gi, "")
+      // Remove <base> tags that could change relative URLs.
+      .replace(/<base\b[^>]*>/gi, "")
+      // Remove external resource links.
+      .replace(/<link\b[^>]*>/gi, "")
       // Remove iframe/embed/object tags to prevent nested execution contexts.
       .replace(
         /<(iframe|embed|object)\b[^<]*(?:(?!<\/\1>)<[^<]*)*<\/\1>/gi,
+        "",
+      )
+      // Remove forms; the iframe is sandboxed without forms, but defense in depth is cheap.
+      .replace(
+        /<form\b[^<]*(?:(?!<\/form>)<[^<]*)*<\/form>/gi,
         "",
       )
       .trim()
